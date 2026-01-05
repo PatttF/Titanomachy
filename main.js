@@ -30,6 +30,10 @@ const OUTSIDE_ENEMY_SPEED_MULT = 1.8;
 const MAX_ENEMIES_TOTAL = 14;
 const ENEMY_SPAWN_INTERVAL = 120; // frames
 let enemySpawnTimer = 0;
+// Optimization tuning
+const MAX_SPAWN_PER_FRAME_CUBEINSPHERE = 2; // cap additional spawns per frame in cube-in-sphere
+const COLLISION_CHECK_RADIUS = 160; // only check collisions for enemies within this distance to player
+const STAR_SPAWN_BATCH_REDUCED = Math.max(8, Math.floor(STAR_SPAWN_BATCH / 3));
 let gameOver = false;
 let enemyLasers = [];
 let playerHealth = 100;
@@ -985,7 +989,8 @@ function animate() {
       } catch (e) {}
     }
     if (visibleCount < MIN_ENEMIES_IN_VIEW && enemies.length < MAX_ENEMIES_TOTAL) {
-      const spawnCount = Math.min((MIN_ENEMIES_IN_VIEW - visibleCount) + 1, MAX_ENEMIES_TOTAL - enemies.length);
+      let spawnCount = Math.min((MIN_ENEMIES_IN_VIEW - visibleCount) + 1, MAX_ENEMIES_TOTAL - enemies.length);
+      try { if (levelCube && levelCube.userData && levelCube.userData.type === 'cubeinsphere') spawnCount = Math.min(spawnCount, MAX_SPAWN_PER_FRAME_CUBEINSPHERE); } catch (e) {}
       for (let s = 0; s < spawnCount; s++) spawnEnemy();
     }
   } catch (e) {}
@@ -1036,7 +1041,10 @@ function animate() {
       if (visibleStars < STAR_MIN_VISIBLE) {
         // spawn stars around camera to repopulate the local view
         const current = Math.floor(starPositions.length / 3);
-        const canAdd = Math.max(0, Math.min(STAR_SPAWN_BATCH, STAR_MAX_TOTAL - current));
+        // reduce spawn batch when inside the cube-in-sphere level to lower particle load
+        let batchLimit = STAR_SPAWN_BATCH;
+        try { if (levelCube && levelCube.userData && levelCube.userData.type === 'cubeinsphere') batchLimit = STAR_SPAWN_BATCH_REDUCED; } catch (e) {}
+        const canAdd = Math.max(0, Math.min(batchLimit, STAR_MAX_TOTAL - current));
         if (canAdd > 0) {
           const newArr = new Float32Array((current + canAdd) * 3);
           newArr.set(starPositions);
@@ -1237,6 +1245,7 @@ function animate() {
     }
     // Enemy shoots at player every 90 frames
     enemy.userData.shootTimer = (enemy.userData.shootTimer || 0) + 1;
+    const distToPlayer = enemy.position.distanceTo(ship.position);
     if (enemy.userData.shootTimer >= 90) {
       // Only fire if enemy is visible in the player's camera frustum
       let inView = false;
@@ -1247,14 +1256,13 @@ function animate() {
         }
       } catch (e) {}
       // Only shoot if the player is within a close range to avoid spam
-      const distToPlayer = enemy.position.distanceTo(ship.position);
       if (inView && distToPlayer <= 100) shootEnemyLaser(enemy, ship);
       enemy.userData.shootTimer = 0;
     }
-    // Collision with player using hit radii
+    // Collision with player using hit radii (skip for far-away enemies to save checks)
     const enemyRadius = (enemy.userData && enemy.userData.hitRadius) ? enemy.userData.hitRadius : 1.2;
     const shipRadius = 1.0; // approximate
-    if (enemy.position.distanceTo(ship.position) < (enemyRadius + shipRadius)) {
+    if (distToPlayer <= COLLISION_CHECK_RADIUS && distToPlayer < (enemyRadius + shipRadius)) {
       // Collision: player takes damage and the enemy is destroyed by impact
       let dmg = 3;
       try { if (levelCube && levelCube.userData && levelCube.userData.type === 'pyramid') dmg += 2; } catch (e) {}
@@ -1460,6 +1468,25 @@ function spawnEnemy(center) {
           spawnPos.copy(cubeCenter).add(dir.multiplyScalar(minFromCube));
         } else {
           spawnPos.copy(cubeCenter).add(toCube.normalize().multiplyScalar(minFromCube));
+        }
+      }
+    } catch (e) {}
+  }
+  // For cube-in-sphere level, also ensure spawn is outside the enclosing sphere
+  if (levelCube && levelCube.userData && levelCube.userData.type === 'cubeinsphere' && levelCube.userData.enclosingSphere) {
+    try {
+      const sph = levelCube.userData.enclosingSphere;
+      const sphCenter = sph.position ? sph.position.clone() : levelCube.position.clone();
+      const sphRadius = (sph.userData && (sph.userData.radius || sph.userData.baseRadius)) ? (sph.userData.radius || sph.userData.baseRadius) : (sph.geometry && sph.geometry.boundingSphere ? sph.geometry.boundingSphere.radius : 0);
+      const enemyRadius = enemy.userData.hitRadius || 1.0;
+      const minFromSphere = sphRadius + enemyRadius + 12; // buffer to keep enemies clear of sphere
+      const toSph = spawnPos.clone().sub(sphCenter);
+      if (toSph.length() < minFromSphere) {
+        if (toSph.length() < 1e-3) {
+          const dir = new THREE.Vector3((Math.random()-0.5), (Math.random()-0.5), (Math.random()-0.5)).normalize();
+          spawnPos.copy(sphCenter).add(dir.multiplyScalar(minFromSphere));
+        } else {
+          spawnPos.copy(sphCenter).add(toSph.normalize().multiplyScalar(minFromSphere));
         }
       }
     } catch (e) {}
