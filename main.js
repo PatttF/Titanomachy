@@ -2960,25 +2960,12 @@ function createBoostUI() {
 // Create on-screen touch controls (joystick + fire + boost)
 function createTouchUI() {
   try {
-    // joystick
-    const js = document.createElement('div');
-    js.className = 'touch-joystick';
-    js.id = 'touch-joystick';
-    js.style.webkitUserSelect = 'none';
-    js.style.userSelect = 'none';
-    const knob = document.createElement('div');
-    knob.className = 'knob';
-    js.appendChild(knob);
-    document.body.appendChild(js);
-
+    // Use document-level touch handlers so user can start dragging anywhere (no static joystick graphic)
     let activeId = null;
     let baseX = 0, baseY = 0, maxR = TOUCH_MAX_R;
     let movementActive = false;
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-    const initialLeft = js.style.left || '12px';
-    const initialBottom = js.style.bottom || '12px';
 
-    // Use document-level touch handlers so user can start dragging anywhere
     const onTouchStart = (ev) => {
       for (let i = 0; i < ev.changedTouches.length; i++) {
         const t = ev.changedTouches[i];
@@ -2988,12 +2975,6 @@ function createTouchUI() {
         activeId = t.identifier;
         baseX = t.clientX; baseY = t.clientY;
         movementActive = true;
-        // position joystick at touch start
-        try {
-          js.style.left = (baseX - js.offsetWidth / 2) + 'px';
-          js.style.top = (baseY - js.offsetHeight / 2) + 'px';
-          js.style.bottom = 'auto';
-        } catch (e) {}
         break;
       }
     };
@@ -3007,7 +2988,7 @@ function createTouchUI() {
         const dy = t.clientY - baseY;
         const len = Math.sqrt(dx*dx + dy*dy);
         if (len < TOUCH_DEADZONE) {
-          touchInput.right = 0; touchInput.forward = 0; knob.style.transform = '';
+          touchInput.right = 0; touchInput.forward = 0;
         } else {
           const r = Math.min(len, maxR);
           const nx = (len > 0) ? (dx / len) * (r / maxR) : 0;
@@ -3015,8 +2996,6 @@ function createTouchUI() {
           touchInput.right = clamp(nx, -1, 1);
           // keep sign so dragging up produces negative forward (matches keyboard 'Up' -> rotateX(-...))
           touchInput.forward = clamp(ny, -1, 1);
-          // move knob in same direction as the user's drag
-          knob.style.transform = `translate(${touchInput.right * 36}px, ${touchInput.forward * 36}px)`;
         }
         break;
       }
@@ -3025,9 +3004,7 @@ function createTouchUI() {
       for (let i = 0; i < ev.changedTouches.length; i++) {
         const t = ev.changedTouches[i];
         if (t.identifier === activeId) {
-          activeId = null; movementActive = false; touchInput.right = 0; touchInput.forward = 0; knob.style.transform = '';
-          // restore joystick corner position
-          try { js.style.left = initialLeft; js.style.bottom = initialBottom; js.style.top = 'auto'; } catch (e) {}
+          activeId = null; movementActive = false; touchInput.right = 0; touchInput.forward = 0;
         }
       }
     };
