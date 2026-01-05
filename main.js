@@ -33,7 +33,6 @@ let enemySpawnTimer = 0;
 // Optimization tuning
 const MAX_SPAWN_PER_FRAME_CUBEINSPHERE = 2; // cap additional spawns per frame in cube-in-sphere
 const COLLISION_CHECK_RADIUS = 160; // only check collisions for enemies within this distance to player
-const STAR_SPAWN_BATCH_REDUCED = Math.max(8, Math.floor(STAR_SPAWN_BATCH / 3));
 let gameOver = false;
 let enemyLasers = [];
 let playerHealth = 100;
@@ -1043,7 +1042,7 @@ function animate() {
         const current = Math.floor(starPositions.length / 3);
         // reduce spawn batch when inside the cube-in-sphere level to lower particle load
         let batchLimit = STAR_SPAWN_BATCH;
-        try { if (levelCube && levelCube.userData && levelCube.userData.type === 'cubeinsphere') batchLimit = STAR_SPAWN_BATCH_REDUCED; } catch (e) {}
+        try { if (levelCube && levelCube.userData && levelCube.userData.type === 'cubeinsphere') batchLimit = Math.max(8, Math.floor(STAR_SPAWN_BATCH / 3)); } catch (e) {}
         const canAdd = Math.max(0, Math.min(batchLimit, STAR_MAX_TOTAL - current));
         if (canAdd > 0) {
           const newArr = new Float32Array((current + canAdd) * 3);
