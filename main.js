@@ -2944,16 +2944,32 @@ function createTouchUI() {
 
     let activeId = null;
     let baseX = 0, baseY = 0, maxR = 48;
+    let movementActive = false;
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const initialLeft = js.style.left || '12px';
+    const initialBottom = js.style.bottom || '12px';
 
-    js.addEventListener('touchstart', (ev) => {
-      ev.preventDefault();
-      const t = ev.changedTouches[0];
-      activeId = t.identifier;
-      baseX = t.clientX;
-      baseY = t.clientY;
-    }, { passive: false });
-    js.addEventListener('touchmove', (ev) => {
+    // Use document-level touch handlers so user can start dragging anywhere
+    const onTouchStart = (ev) => {
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        // ignore touches that started on buttons (they handle themselves)
+        try { if (t.target && t.target.closest && t.target.closest('.touch-button')) continue; } catch (e) {}
+        ev.preventDefault();
+        activeId = t.identifier;
+        baseX = t.clientX; baseY = t.clientY;
+        movementActive = true;
+        // position joystick at touch start
+        try {
+          js.style.left = (baseX - js.offsetWidth / 2) + 'px';
+          js.style.top = (baseY - js.offsetHeight / 2) + 'px';
+          js.style.bottom = 'auto';
+        } catch (e) {}
+        break;
+      }
+    };
+    const onTouchMove = (ev) => {
+      if (!movementActive) return;
       ev.preventDefault();
       for (let i = 0; i < ev.changedTouches.length; i++) {
         const t = ev.changedTouches[i];
@@ -2966,20 +2982,24 @@ function createTouchUI() {
         const ny = (len > 0) ? (dy / len) * (r / maxR) : 0;
         touchInput.right = clamp(nx, -1, 1);
         touchInput.forward = clamp(-ny, -1, 1);
-        // move knob visually
         knob.style.transform = `translate(${touchInput.right * 36}px, ${-touchInput.forward * 36}px)`;
         break;
       }
-    }, { passive: false });
-    js.addEventListener('touchend', (ev) => {
-      ev.preventDefault();
+    };
+    const onTouchEnd = (ev) => {
       for (let i = 0; i < ev.changedTouches.length; i++) {
         const t = ev.changedTouches[i];
         if (t.identifier === activeId) {
-          activeId = null; touchInput.right = 0; touchInput.forward = 0; knob.style.transform = '';
+          activeId = null; movementActive = false; touchInput.right = 0; touchInput.forward = 0; knob.style.transform = '';
+          // restore joystick corner position
+          try { js.style.left = initialLeft; js.style.bottom = initialBottom; js.style.top = 'auto'; } catch (e) {}
         }
       }
-    }, { passive: false });
+    };
+    document.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     // Fire button
     const fire = document.createElement('div');
