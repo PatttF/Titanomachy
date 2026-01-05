@@ -67,6 +67,10 @@ let effects = [];
 let lastTime = Date.now();
 let levelCube = null;
 
+// Lightweight touch detection and state
+const isTouchDevice = (('ontouchstart' in window) || (navigator && navigator.maxTouchPoints && navigator.maxTouchPoints > 0));
+let touchInput = { forward: 0, right: 0, firing: false, boosting: false, _fireInterval: null };
+
 // Starfield globals and tuning
 let stars, starsGeo, starPositions;
 const STAR_INITIAL_COUNT = 400;
@@ -318,16 +322,27 @@ function init() {
   pointerOverlay.style.padding = '8px 12px';
   pointerOverlay.style.borderRadius = '6px';
   pointerOverlay.style.zIndex = '200';
-  pointerOverlay.innerText = 'Click the canvas to lock mouse and control ship. Press Esc to unlock.';
+  if (isTouchDevice) {
+    pointerOverlay.innerText = 'Drag the left control to steer. Tap the red button to fire. Use boost button for speed.';
+  } else {
+    pointerOverlay.innerText = 'Click the canvas to lock mouse and control ship. Press Esc to unlock.';
+  }
   document.body.appendChild(pointerOverlay);
 
-  // Request pointer lock when user clicks the renderer canvas
+  // Desktop: pointer lock on click
   renderer.domElement.style.cursor = 'crosshair';
-  renderer.domElement.addEventListener('click', () => {
-    renderer.domElement.requestPointerLock();
-  });
+  if (!isTouchDevice) {
+    renderer.domElement.addEventListener('click', () => {
+      try { renderer.domElement.requestPointerLock(); } catch (e) {}
+    });
+    // prevent context menu inside canvas so right-click can be used for boost
+    renderer.domElement.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+  } else {
+    // On touch devices, provide simple on-screen controls
+    createTouchUI();
+  }
   // prevent context menu inside canvas so right-click can be used for boost
-  renderer.domElement.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+  
 
   document.addEventListener('pointerlockchange', () => {
     pointerLocked = (document.pointerLockElement === renderer.domElement);
@@ -494,11 +509,34 @@ function animate() {
 
 
   // Controls act as rotations; ship always moves forward in facing direction
-  if (input.a) ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), ROT_SPEED); // yaw left
-  if (input.d) ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), -ROT_SPEED); // yaw right
-  // Arrow/keyboard pitch: invert so 'Up' moves view up (more intuitive)
-  if (input.w) ship.rotateX(-ROT_SPEED);
-  if (input.s) ship.rotateX(ROT_SPEED);
+  if (isTouchDevice) {
+    // Use left-side joystick for pitch/yaw on touch devices
+    try {
+      const yaw = -touchInput.right * ROT_SPEED * 1.8;
+      const pitch = touchInput.forward * ROT_SPEED * 1.8;
+      ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), yaw);
+      // apply pitch around a stable screen-right axis similar to mouse handler
+      const forward = new THREE.Vector3();
+      try { camera.getWorldDirection(forward); } catch (e) { forward.set(0,0,-1).applyQuaternion(ship.quaternion); }
+      const worldUp = new THREE.Vector3(0,1,0);
+      const screenRight = new THREE.Vector3().crossVectors(worldUp, forward);
+      if (screenRight.lengthSq() > 1e-6) {
+        screenRight.normalize();
+        ship.rotateOnWorldAxis(screenRight, pitch);
+      } else {
+        ship.rotateOnWorldAxis(new THREE.Vector3(1,0,0), pitch);
+      }
+    } catch (e) {
+      if (touchInput.right) ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), -touchInput.right * ROT_SPEED);
+      if (touchInput.forward) ship.rotateX(touchInput.forward * ROT_SPEED);
+    }
+  } else {
+    if (input.a) ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), ROT_SPEED); // yaw left
+    if (input.d) ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), -ROT_SPEED); // yaw right
+    // Arrow/keyboard pitch: invert so 'Up' moves view up (more intuitive)
+    if (input.w) ship.rotateX(-ROT_SPEED);
+    if (input.s) ship.rotateX(ROT_SPEED);
+  }
   // Continuous keyboard roll (Q/E) removed
   // Apply any barrel roll in progress (userData.rollRemaining in radians)
   if (ship.userData && ship.userData.rollRemaining && Math.abs(ship.userData.rollRemaining) > 0.0001) {
@@ -2888,6 +2926,90 @@ function createBoostUI() {
   el.innerText = 'BOOST: READY';
   document.body.appendChild(el);
   window.boostEl = el;
+}
+
+// Create on-screen touch controls (joystick + fire + boost)
+function createTouchUI() {
+  try {
+    // joystick
+    const js = document.createElement('div');
+    js.className = 'touch-joystick';
+    js.id = 'touch-joystick';
+    js.style.webkitUserSelect = 'none';
+    js.style.userSelect = 'none';
+    const knob = document.createElement('div');
+    knob.className = 'knob';
+    js.appendChild(knob);
+    document.body.appendChild(js);
+
+    let activeId = null;
+    let baseX = 0, baseY = 0, maxR = 48;
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+    js.addEventListener('touchstart', (ev) => {
+      ev.preventDefault();
+      const t = ev.changedTouches[0];
+      activeId = t.identifier;
+      baseX = t.clientX;
+      baseY = t.clientY;
+    }, { passive: false });
+    js.addEventListener('touchmove', (ev) => {
+      ev.preventDefault();
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        if (t.identifier !== activeId) continue;
+        const dx = t.clientX - baseX;
+        const dy = t.clientY - baseY;
+        const len = Math.sqrt(dx*dx + dy*dy);
+        const r = Math.min(len, maxR);
+        const nx = (len > 0) ? (dx / len) * (r / maxR) : 0;
+        const ny = (len > 0) ? (dy / len) * (r / maxR) : 0;
+        touchInput.right = clamp(nx, -1, 1);
+        touchInput.forward = clamp(-ny, -1, 1);
+        // move knob visually
+        knob.style.transform = `translate(${touchInput.right * 36}px, ${-touchInput.forward * 36}px)`;
+        break;
+      }
+    }, { passive: false });
+    js.addEventListener('touchend', (ev) => {
+      ev.preventDefault();
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        if (t.identifier === activeId) {
+          activeId = null; touchInput.right = 0; touchInput.forward = 0; knob.style.transform = '';
+        }
+      }
+    }, { passive: false });
+
+    // Fire button
+    const fire = document.createElement('div');
+    fire.className = 'touch-button fire';
+    fire.id = 'touch-fire';
+    fire.innerText = 'FIRE';
+    fire.style.touchAction = 'none';
+    document.body.appendChild(fire);
+
+    fire.addEventListener('touchstart', (ev) => {
+      ev.preventDefault();
+      if (touchInput._fireInterval) return;
+      touchInput.firing = true;
+      try { shootLaser(); } catch (e) {}
+      touchInput._fireInterval = setInterval(() => { try { shootLaser(); } catch (e) {} }, 160);
+    }, { passive: false });
+    const endFire = (ev) => { ev.preventDefault(); touchInput.firing = false; if (touchInput._fireInterval) { clearInterval(touchInput._fireInterval); touchInput._fireInterval = null; } };
+    fire.addEventListener('touchend', endFire, { passive: false });
+    fire.addEventListener('touchcancel', endFire, { passive: false });
+
+    // Boost button
+    const boostBtn = document.createElement('div');
+    boostBtn.className = 'touch-button boost';
+    boostBtn.id = 'touch-boost';
+    boostBtn.innerText = 'BOOST';
+    boostBtn.style.touchAction = 'none';
+    document.body.appendChild(boostBtn);
+    boostBtn.addEventListener('touchstart', (ev) => { ev.preventDefault(); try { startBoost(); } catch (e) {} }, { passive: false });
+
+  } catch (e) { console.warn('createTouchUI failed', e); }
 }
 
 // Missile incoming warning UI
