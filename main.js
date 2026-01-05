@@ -362,7 +362,7 @@ function init() {
     if (!ship) return;
     // apply yaw around world up and pitch around ship's local X to avoid Euler flips
     const yaw = -e.movementX * MOUSE_SENS;
-    const pitch = -e.movementY * MOUSE_SENS;
+    const pitch = e.movementY * MOUSE_SENS;
     // compute new forward after tentative rotations to avoid inversion
     try {
         // Apply yaw (around world up)
@@ -496,8 +496,9 @@ function animate() {
   // Controls act as rotations; ship always moves forward in facing direction
   if (input.a) ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), ROT_SPEED); // yaw left
   if (input.d) ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), -ROT_SPEED); // yaw right
-  if (input.w) ship.rotateX(ROT_SPEED); // pitch up
-  if (input.s) ship.rotateX(-ROT_SPEED); // pitch down
+  // Arrow/keyboard pitch: invert so 'Up' moves view up (more intuitive)
+  if (input.w) ship.rotateX(-ROT_SPEED);
+  if (input.s) ship.rotateX(ROT_SPEED);
   // Continuous keyboard roll (Q/E) removed
   // Apply any barrel roll in progress (userData.rollRemaining in radians)
   if (ship.userData && ship.userData.rollRemaining && Math.abs(ship.userData.rollRemaining) > 0.0001) {
@@ -3453,7 +3454,7 @@ window.addEventListener('mousemove', (e) => {
   const ship = window.playerShip;
   if (ship) {
     const yaw = -dx * ROT_SPEED;
-    const pitch = -dy * ROT_SPEED;
+    const pitch = dy * ROT_SPEED;
     // Direct application: allow full 360° rotation without clamping
     ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), yaw);
     // For drag-based pitch, compute a stable screen-right axis from camera forward and world up
