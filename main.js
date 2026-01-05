@@ -2967,10 +2967,19 @@ function createTouchUI() {
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
     const onTouchStart = (ev) => {
+      const uiSelectors = ['.touch-button', '#start-overlay', '#pause-overlay', '#gameover', '#levelpassed', '#pointer-instructions', '#level-indicator'];
       for (let i = 0; i < ev.changedTouches.length; i++) {
         const t = ev.changedTouches[i];
-        // ignore touches that started on buttons (they handle themselves)
-        try { if (t.target && t.target.closest && t.target.closest('.touch-button')) continue; } catch (e) {}
+        // ignore touches that started on known UI elements so overlays/buttons work
+        try {
+          if (t.target && t.target.closest) {
+            let found = false;
+            for (let s = 0; s < uiSelectors.length; s++) {
+              try { if (t.target.closest(uiSelectors[s])) { found = true; break; } } catch (e) {}
+            }
+            if (found) continue;
+          }
+        } catch (e) {}
         ev.preventDefault();
         activeId = t.identifier;
         baseX = t.clientX; baseY = t.clientY;
