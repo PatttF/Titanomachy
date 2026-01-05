@@ -70,6 +70,10 @@ let levelCube = null;
 // Lightweight touch detection and state
 const isTouchDevice = (('ontouchstart' in window) || (navigator && navigator.maxTouchPoints && navigator.maxTouchPoints > 0));
 let touchInput = { forward: 0, right: 0, firing: false, boosting: false, _fireInterval: null };
+// Mobile tuning: reduce sensitivity and provide deadzone
+const TOUCH_ROT_MULT = 0.9; // multiplier applied to ROT_SPEED for touch
+const TOUCH_MAX_R = 90; // larger joystick radius -> less sensitive
+const TOUCH_DEADZONE = 6; // pixels
 
 // Starfield globals and tuning
 let stars, starsGeo, starPositions;
@@ -512,8 +516,8 @@ function animate() {
   if (isTouchDevice) {
     // Use left-side joystick for pitch/yaw on touch devices
     try {
-      const yaw = -touchInput.right * ROT_SPEED * 1.8;
-      const pitch = touchInput.forward * ROT_SPEED * 1.8;
+      const yaw = -touchInput.right * ROT_SPEED * TOUCH_ROT_MULT;
+      const pitch = touchInput.forward * ROT_SPEED * TOUCH_ROT_MULT;
       ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), yaw);
       // apply pitch around a stable screen-right axis similar to mouse handler
       const forward = new THREE.Vector3();
@@ -2943,7 +2947,7 @@ function createTouchUI() {
     document.body.appendChild(js);
 
     let activeId = null;
-    let baseX = 0, baseY = 0, maxR = 48;
+    let baseX = 0, baseY = 0, maxR = TOUCH_MAX_R;
     let movementActive = false;
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const initialLeft = js.style.left || '12px';
@@ -2977,14 +2981,18 @@ function createTouchUI() {
         const dx = t.clientX - baseX;
         const dy = t.clientY - baseY;
         const len = Math.sqrt(dx*dx + dy*dy);
-        const r = Math.min(len, maxR);
-        const nx = (len > 0) ? (dx / len) * (r / maxR) : 0;
-        const ny = (len > 0) ? (dy / len) * (r / maxR) : 0;
-        touchInput.right = clamp(nx, -1, 1);
-        // keep sign so dragging up produces negative forward (matches keyboard 'Up' -> rotateX(-...))
-        touchInput.forward = clamp(ny, -1, 1);
-        // move knob in same direction as the user's drag
-        knob.style.transform = `translate(${touchInput.right * 36}px, ${touchInput.forward * 36}px)`;
+        if (len < TOUCH_DEADZONE) {
+          touchInput.right = 0; touchInput.forward = 0; knob.style.transform = '';
+        } else {
+          const r = Math.min(len, maxR);
+          const nx = (len > 0) ? (dx / len) * (r / maxR) : 0;
+          const ny = (len > 0) ? (dy / len) * (r / maxR) : 0;
+          touchInput.right = clamp(nx, -1, 1);
+          // keep sign so dragging up produces negative forward (matches keyboard 'Up' -> rotateX(-...))
+          touchInput.forward = clamp(ny, -1, 1);
+          // move knob in same direction as the user's drag
+          knob.style.transform = `translate(${touchInput.right * 36}px, ${touchInput.forward * 36}px)`;
+        }
         break;
       }
     };
