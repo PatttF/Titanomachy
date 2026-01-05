@@ -71,9 +71,9 @@ let levelCube = null;
 const isTouchDevice = (('ontouchstart' in window) || (navigator && navigator.maxTouchPoints && navigator.maxTouchPoints > 0));
 let touchInput = { forward: 0, right: 0, firing: false, boosting: false, _fireInterval: null };
 // Mobile tuning: reduce sensitivity and provide deadzone
-const TOUCH_ROT_MULT = 0.9; // multiplier applied to ROT_SPEED for touch
-const TOUCH_MAX_R = 90; // larger joystick radius -> less sensitive
-const TOUCH_DEADZONE = 6; // pixels
+const TOUCH_ROT_MULT = 0.5; // multiplier applied to ROT_SPEED for touch (lower => less sensitive)
+const TOUCH_MAX_R = 140; // larger joystick radius -> less sensitive control over a larger area
+const TOUCH_DEADZONE = 8; // pixels
 
 // Starfield globals and tuning
 let stars, starsGeo, starPositions;
@@ -314,24 +314,23 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // Pointer lock instruction overlay
-  const pointerOverlay = document.createElement('div');
-  pointerOverlay.id = 'pointer-instructions';
-  pointerOverlay.style.position = 'fixed';
-  pointerOverlay.style.left = '50%';
-  pointerOverlay.style.top = '90%';
-  pointerOverlay.style.transform = 'translateX(-50%)';
-  pointerOverlay.style.color = '#fff';
-  pointerOverlay.style.background = 'rgba(0,0,0,0.5)';
-  pointerOverlay.style.padding = '8px 12px';
-  pointerOverlay.style.borderRadius = '6px';
-  pointerOverlay.style.zIndex = '200';
-  if (isTouchDevice) {
-    pointerOverlay.innerText = 'Drag the left control to steer. Tap the red button to fire. Use boost button for speed.';
-  } else {
+  // Pointer lock instruction overlay (desktop only)
+  let pointerOverlay = null;
+  if (!isTouchDevice) {
+    pointerOverlay = document.createElement('div');
+    pointerOverlay.id = 'pointer-instructions';
+    pointerOverlay.style.position = 'fixed';
+    pointerOverlay.style.left = '50%';
+    pointerOverlay.style.top = '90%';
+    pointerOverlay.style.transform = 'translateX(-50%)';
+    pointerOverlay.style.color = '#fff';
+    pointerOverlay.style.background = 'rgba(0,0,0,0.5)';
+    pointerOverlay.style.padding = '8px 12px';
+    pointerOverlay.style.borderRadius = '6px';
+    pointerOverlay.style.zIndex = '200';
     pointerOverlay.innerText = 'Click the canvas to lock mouse and control ship. Press Esc to unlock.';
+    document.body.appendChild(pointerOverlay);
   }
-  document.body.appendChild(pointerOverlay);
 
   // Desktop: pointer lock on click
   renderer.domElement.style.cursor = 'crosshair';
@@ -350,7 +349,7 @@ function init() {
 
   document.addEventListener('pointerlockchange', () => {
     pointerLocked = (document.pointerLockElement === renderer.domElement);
-    pointerOverlay.style.display = pointerLocked ? 'none' : 'block';
+    try { if (pointerOverlay) pointerOverlay.style.display = pointerLocked ? 'none' : 'block'; } catch (e) {}
   });
 
   // Shared raycaster and vector for reticule / ray tests (avoid per-frame allocations)
