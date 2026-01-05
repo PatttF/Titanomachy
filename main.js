@@ -2981,8 +2981,10 @@ function createTouchUI() {
         const nx = (len > 0) ? (dx / len) * (r / maxR) : 0;
         const ny = (len > 0) ? (dy / len) * (r / maxR) : 0;
         touchInput.right = clamp(nx, -1, 1);
-        touchInput.forward = clamp(-ny, -1, 1);
-        knob.style.transform = `translate(${touchInput.right * 36}px, ${-touchInput.forward * 36}px)`;
+        // keep sign so dragging up produces negative forward (matches keyboard 'Up' -> rotateX(-...))
+        touchInput.forward = clamp(ny, -1, 1);
+        // move knob in same direction as the user's drag
+        knob.style.transform = `translate(${touchInput.right * 36}px, ${touchInput.forward * 36}px)`;
         break;
       }
     };
